@@ -52,7 +52,7 @@ mod tests {
         AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
         message::{SinglePart, header},
     };
-    use rand::Rng;
+    use rand::RngExt;
 
     #[tokio::test]
     async fn test_mail_server() {

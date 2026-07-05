@@ -2,26 +2,19 @@
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
 
-# Enable autoscaling using HorizontalPodAutoscaler. Note that the replicaCount would be ignored if autoscaling is enabled
 autoscaling:
+  # -- Enable autoscaling using a HorizontalPodAutoscaler. When enabled, `replicaCount` is ignored.
   enabled: false
-#  minReplicas: 2
-#  maxReplicas: 5
-#  metrics:
-#    - type: Resource
-#      resource:
-#        name: cpu
-#        target:
-#          type: Utilization
-#          averageUtilization: 60
-#    - type: Resource
-#      resource:
-#        name: memory
-#        target:
-#          type: Utilization
-#          averageUtilization: 60
+  # -- Minimum number of replicas when autoscaling is enabled.
+  minReplicas: 1
+  # -- Maximum number of replicas when autoscaling is enabled.
+  maxReplicas: 5
+  # -- Target average CPU utilization percentage. Set to `null` to disable.
+  targetCPUUtilizationPercentage: 80
+  # -- Target average memory utilization percentage. Set to `null` to disable.
+  targetMemoryUtilizationPercentage: null
 
-# -- Configure the number of replicas to run.
+# -- Configure the number of replicas to run. Ignored when `autoscaling.enabled` is true.
 replicaCount: 1
 
 image:
@@ -32,7 +25,7 @@ image:
   # -- Overrides the image tag whose default is the chart appVersion.
   tag: "latest"
 
-# -- If needed, specity a custom imagePullSecrets to use with priavet registries.
+# -- If needed, specify custom imagePullSecrets to use with private registries.
 imagePullSecrets: []
 
 # -- Configure the name override for resources.
@@ -49,10 +42,10 @@ serviceAccount:
   # -- The name of the service account to use. If not set and create is true, a name is generated using the fullname template
   name: ""
 
-# -- Configure additional labels to be required by the pods to run the application.
+# -- Additional labels to add to the pods.
 podLabels: {}
 
-# -- Configure annotations to be required by the pods to run the application.
+# -- Annotations to add to the pods.
 podAnnotations: {}
 
 # -- Configure the pod security context.
@@ -68,28 +61,28 @@ securityContext: {}
   # runAsNonRoot: true
   # runAsUser: 1000
 
-# Name of an existing PriorityClass to assign, defining the importance of the pods compared to other pods in the cluster.
+# -- Name of an existing PriorityClass to assign, defining the importance of the pods
+# compared to other pods in the cluster.
 # Ref: https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/
 priorityClassName: ""
 
 service:
   # -- The type of service to create.
   type: ClusterIP
-  # -- The port to expose on the service.
+  # -- The port to expose on the service for the web interface.
   port: 80
-  # -- The container port to expose on the service.
+  # -- The container port the web interface listens on (sets the HTTP_PORT env var).
   containerPort: 1080
-  # -- The container port to expose on the service for the SMTP server.
+  # -- The container/service port the SMTP server listens on (sets the SMTP_PORT env var).
   smtpPort: 1025
 
 ingress:
   # -- Enables the use of an ingress controller.
   enabled: false
-  # -- The class of the Ingress controller to use, default to nginx (nginx, traefik, haproxy)
+  # -- The class of the Ingress controller to use (e.g. nginx, traefik, haproxy). Leave empty to use the cluster default.
   className: ""
   # -- Annotations to add to the ingress
   annotations: {}
-    # kubernetes.io/ingress.class: nginx
     # kubernetes.io/tls-acme: "true"
   hosts:
     - paths:
@@ -104,15 +97,46 @@ ingress:
   #    hosts:
   #      - chart-example.local
 
-# -- Enable autoscaling for the deployment.
+# -- Resource requests and limits for the container.
+# We usually recommend not to specify default resources and to leave this as a conscious
+# choice for the user. This also increases chances charts run on environments with little
+# resources, such as Minikube. If you do want to specify resources, uncomment the following
+# lines, adjust them as necessary, and remove the curly braces after 'resources:'.
 resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   # limits:
   #   cpu: 100m
   #   memory: 128Mi
   # requests:
   #   cpu: 100m
   #   memory: 128Mi
+
+# -- Configure the liveness probe for the container.
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+# -- Configure the readiness probe for the container.
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+# -- Extra environment variables to pass to the MailCrab container.
+# Ref: https://github.com/tweedegolf/mailcrab#configuration
+# For example:
+#   - name: MAILCRAB_RETENTION_PERIOD
+#     value: "3600"
+#   - name: ENABLE_TLS_AUTH
+#     value: "true"
+#   - name: RUST_LOG
+#     value: "mailcrab_backend=info"
+env: []
+
+# -- Node labels for pod assignment.
+nodeSelector: {}
+
+# -- Tolerations for pod assignment.
+tolerations: []
+
+# -- Affinity rules for pod assignment.
+affinity: {}

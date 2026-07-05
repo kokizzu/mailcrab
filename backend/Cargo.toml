@@ -1,8 +1,8 @@
 [package]
 name = "mailcrab-backend"
-version = "1.7.0"
+version = "1.8.0"
 edition = "2024"
-publish = true
+publish = false
 license = "Apache-2.0 OR MIT"
 repository = "https://github.com/tweedegolf/mailcrab"
 description = "Email test server for development, written in Rust"
@@ -10,15 +10,15 @@ description = "Email test server for development, written in Rust"
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }
 mailcrab = { path = "../mailcrab" }
-rust-embed = "8.0"
+rust-embed = "8.11"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
-tower-http = { version = "0.6", features = ["fs", "trace"] }
+tower-http = { version = "0.7", features = ["fs", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.19", features = ["v4", "serde"] }
+uuid = { version = "1.23", features = ["v4", "serde"] }
 
 [dev-dependencies]
 lettre = { version = "0.11", default-features = false, features=[
@@ -29,5 +29,5 @@ lettre = { version = "0.11", default-features = false, features=[
     "tokio1-rustls-tls",
     "tokio1"
 ] }
-fake = { version = "4.4", features=["derive"]}
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+fake = { version = "5.1", features=["derive"]}
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
