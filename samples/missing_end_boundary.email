@@ -1,0 +1,32 @@
+Sender: alerts@example.org
+Recipients: admin@example.net
+Subject: New user created
+From: Example Alerts <alerts@example.org>
+To: admin@example.net
+Date: Sat, 01 Aug 2026 23:20:55 +0200
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary=__MB__test-boundary-missing-end
+
+--__MB__test-boundary-missing-end
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+**************
+*Hello world!*
+**************
+
+A new user has been created and their username is: testuser@example.net
+
+--__MB__test-boundary-missing-end
+Content-Type: text/html
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html><html><head>
+  <meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3DUTF-8"/=
+>
+</head>
+<body>
+  <h1><b>Hello world!</b></h1>
+  <div>A new user has been created and their username is: testuser@example.=
+net</div>
+</body></html>

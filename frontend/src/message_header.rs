@@ -88,6 +88,13 @@ pub fn view(props: &MessageHeaderProps) -> Html {
             {"Invert body"}
           </button>
         </div>
+        if !message.parse_warnings.is_empty() {
+          <ul class="parse-warnings">
+            {message.parse_warnings.iter().map(|warning| html! {
+              <li>{warning}</li>
+            }).collect::<Html>()}
+          </ul>
+        }
       </>
     }
 }

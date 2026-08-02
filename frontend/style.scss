@@ -74,6 +74,8 @@ select {
   --tab-background: #e9e9e9;
   --red: #f74c00;
   --light-red: #fffafa;
+  --warning: #b45309;
+  --light-warning: #fff8e7;
   --foreground: #333;
   --background: white;
 }
@@ -88,6 +90,8 @@ body {
     --light: #202020;
     --tab-background: #2c2c2c;
     --light-red: #171616;
+    --warning: #e8a33d;
+    --light-warning: #26200f;
     --foreground: white;
     --background: #0a0a0a;
 
@@ -499,6 +503,25 @@ header {
           display: none;
           background-image: url('img/dark-mode.svg');
           margin-right: 0;
+        }
+      }
+
+      .parse-warnings {
+        display: block;
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background-color: var(--light-warning);
+        border: 1px solid var(--warning);
+        font-size: 0.85rem;
+
+        li {
+          line-height: 1.6;
+
+          &::before {
+            content: '⚠';
+            margin-right: 0.5rem;
+            color: var(--warning);
+          }
         }
       }
 

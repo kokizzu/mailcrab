@@ -53,6 +53,8 @@ pub struct MailMessage {
     pub headers: HashMap<String, String>,
     pub envelope_from: String,
     pub envelope_recipients: Vec<String>,
+    #[serde(default)]
+    pub parse_warnings: Vec<String>,
 }
 
 #[derive(Serialize, Debug)]

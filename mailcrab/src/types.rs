@@ -41,6 +41,8 @@ pub struct MailMessageMetadata {
     pub attachments: Vec<AttachmentMetadata>,
     pub envelope_from: String,
     pub envelope_recipients: Vec<String>,
+    #[serde(default)]
+    pub parse_warnings: Vec<String>,
 }
 
 impl From<MailMessage> for MailMessageMetadata {
@@ -59,6 +61,7 @@ impl From<MailMessage> for MailMessageMetadata {
             attachments,
             envelope_from,
             envelope_recipients,
+            parse_warnings,
             ..
         } = message;
         MailMessageMetadata {
@@ -82,6 +85,7 @@ impl From<MailMessage> for MailMessageMetadata {
                 .collect::<Vec<AttachmentMetadata>>(),
             envelope_from,
             envelope_recipients,
+            parse_warnings,
         }
     }
 }
@@ -150,6 +154,7 @@ pub struct MailMessage {
     raw: String,
     pub envelope_from: String,
     pub envelope_recipients: Vec<String>,
+    pub parse_warnings: Vec<String>,
 }
 
 impl MailMessage {
@@ -187,14 +192,71 @@ impl MailMessage {
     }
 }
 
+/// Check whether a raw message contains the given byte sequence
+fn contains(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty()
+        && haystack
+            .windows(needle.len())
+            .any(|window| window == needle)
+}
+
+/// Detect MIME format problems that mail_parser recovers from silently,
+/// so they can be surfaced in the interface as warnings
+fn mime_format_warnings(message: &mail_parser::Message) -> Vec<String> {
+    let raw: &[u8] = message.raw_message.as_ref();
+    let mut warnings = Vec::new();
+
+    for part in &message.parts {
+        let Some(content_type) = part.content_type() else {
+            continue;
+        };
+
+        if !content_type.c_type.eq_ignore_ascii_case("multipart") {
+            continue;
+        }
+
+        let subtype = format!(
+            "multipart/{}",
+            content_type.c_subtype.as_deref().unwrap_or("mixed")
+        );
+
+        let Some(boundary) = content_type.attribute("boundary") else {
+            warnings.push(format!(
+                "{subtype} part is missing a boundary attribute in its Content-Type header"
+            ));
+            continue;
+        };
+
+        let delimiter = format!("--{boundary}");
+        let terminator = format!("--{boundary}--");
+
+        if !contains(raw, terminator.as_bytes()) {
+            if contains(raw, delimiter.as_bytes()) {
+                warnings.push(format!(
+                    "{subtype} part is missing its terminating boundary \"{terminator}\""
+                ));
+            } else {
+                warnings.push(format!(
+                    "{subtype} part declares boundary \"{boundary}\", but it never occurs in the message body"
+                ));
+            }
+        }
+    }
+
+    warnings
+}
+
 impl TryFrom<mail_parser::Message<'_>> for MailMessage {
     type Error = Error;
 
     fn try_from(message: mail_parser::Message) -> Result<Self, Self::Error> {
+        let mut parse_warnings = mime_format_warnings(&message);
+
         let from = match message.from().and_then(|f| f.first()) {
             Some(addr) => addr.into(),
             _ => {
                 warn!("Could not parse 'From' address header, setting placeholder address.");
+                parse_warnings.push("could not parse the 'From' address header".to_string());
 
                 Address {
                     name: Some("No from header".to_string()),
@@ -210,6 +272,7 @@ impl TryFrom<mail_parser::Message<'_>> for MailMessage {
                 .collect::<Vec<Address>>(),
             _ => {
                 warn!("Could not parse 'To' address header, setting placeholder address.");
+                parse_warnings.push("could not parse the 'To' address header".to_string());
 
                 vec![Address {
                     name: Some("No to header".to_string()),
@@ -270,7 +333,190 @@ impl TryFrom<mail_parser::Message<'_>> for MailMessage {
             attachments,
             raw,
             headers,
+            parse_warnings,
             ..MailMessage::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MailMessage;
+    use mail_parser::MessageParser;
+
+    fn parse(raw: &str) -> MailMessage {
+        MessageParser::default()
+            .parse(raw.as_bytes())
+            .expect("failed to parse message")
+            .try_into()
+            .expect("failed to convert message")
+    }
+
+    #[test]
+    fn well_formed_multipart_message_has_no_warnings() {
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "From: Sender <sender@example.com>\r\n",
+            "To: Receiver <receiver@example.com>\r\n",
+            "Date: Sat, 01 Aug 2026 23:20:55 +0200\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/alternative; boundary=test-boundary-123\r\n",
+            "\r\n",
+            "--test-boundary-123\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+            "\r\n",
+            "--test-boundary-123\r\n",
+            "Content-Type: text/html\r\n",
+            "\r\n",
+            "<html><body><p>Hello world!</p></body></html>\r\n",
+            "\r\n",
+            "--test-boundary-123--\r\n",
+        ));
+
+        assert!(
+            message.parse_warnings.is_empty(),
+            "unexpected warnings: {:?}",
+            message.parse_warnings
+        );
+        assert!(message.text.contains("Hello world!"));
+        assert!(message.html.contains("<p>Hello world!</p>"));
+    }
+
+    #[test]
+    fn missing_terminating_boundary_yields_warning() {
+        // multipart/alternative message that ends after the last body part,
+        // without the required "--boundary--" terminator
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "From: Sender <sender@example.com>\r\n",
+            "To: Receiver <receiver@example.com>\r\n",
+            "Date: Sat, 01 Aug 2026 23:20:55 +0200\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/alternative; boundary=test-boundary-123\r\n",
+            "\r\n",
+            "--test-boundary-123\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "Content-Transfer-Encoding: quoted-printable\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+            "\r\n",
+            "--test-boundary-123\r\n",
+            "Content-Type: text/html\r\n",
+            "Content-Transfer-Encoding: quoted-printable\r\n",
+            "\r\n",
+            "<html><body><p>Hello world!</p></body></html>\r\n",
+        ));
+
+        assert_eq!(message.parse_warnings.len(), 1);
+        assert_eq!(
+            message.parse_warnings[0],
+            "multipart/alternative part is missing its terminating boundary \"--test-boundary-123--\""
+        );
+
+        // the plain text body is still recovered, but mail_parser does not
+        // classify the truncated trailing part as an HTML body: the HTML
+        // version of the message is silently lost — which is exactly why the
+        // warning should be shown in the interface
+        assert!(message.text.contains("Hello world!"));
+        assert!(message.html.is_empty());
+    }
+
+    #[test]
+    fn unused_boundary_yields_warning() {
+        // the declared boundary never occurs in the body
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "From: Sender <sender@example.com>\r\n",
+            "To: Receiver <receiver@example.com>\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/mixed; boundary=test-boundary-123\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+        ));
+
+        assert_eq!(
+            message.parse_warnings,
+            vec![
+                "multipart/mixed part declares boundary \"test-boundary-123\", but it never occurs in the message body"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn missing_inner_terminating_boundary_yields_warning() {
+        // nested multipart where only the inner terminator is missing
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "From: Sender <sender@example.com>\r\n",
+            "To: Receiver <receiver@example.com>\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/mixed; boundary=outer-boundary\r\n",
+            "\r\n",
+            "--outer-boundary\r\n",
+            "Content-Type: multipart/alternative; boundary=inner-boundary\r\n",
+            "\r\n",
+            "--inner-boundary\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+            "\r\n",
+            "--outer-boundary--\r\n",
+        ));
+
+        assert_eq!(
+            message.parse_warnings,
+            vec![
+                "multipart/alternative part is missing its terminating boundary \"--inner-boundary--\""
+                    .to_string()
+            ]
+        );
+        assert!(message.text.contains("Hello world!"));
+    }
+
+    #[test]
+    fn missing_from_and_to_yields_warnings_and_placeholders() {
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+        ));
+
+        assert_eq!(
+            message.parse_warnings,
+            vec![
+                "could not parse the 'From' address header".to_string(),
+                "could not parse the 'To' address header".to_string(),
+            ]
+        );
+        assert_eq!(
+            message.from.email.as_deref(),
+            Some("no-from-header@example.com")
+        );
+    }
+
+    #[test]
+    fn warnings_are_included_in_metadata() {
+        let message = parse(concat!(
+            "Subject: Test message\r\n",
+            "From: Sender <sender@example.com>\r\n",
+            "To: Receiver <receiver@example.com>\r\n",
+            "MIME-Version: 1.0\r\n",
+            "Content-Type: multipart/mixed; boundary=test-boundary-123\r\n",
+            "\r\n",
+            "--test-boundary-123\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Hello world!\r\n",
+        ));
+
+        let metadata: super::MailMessageMetadata = message.into();
+
+        assert_eq!(metadata.parse_warnings.len(), 1);
+        assert!(metadata.parse_warnings[0].contains("terminating boundary"));
     }
 }

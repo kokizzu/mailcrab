@@ -1,6 +1,6 @@
 use mail_parser::MessageParser;
 use tokio::sync::broadcast::Sender;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
     VERSION,
@@ -45,6 +45,10 @@ impl MailHandler {
         let mut message: MailMessage = parsed.try_into()?;
         message.envelope_from = std::mem::take(&mut self.envelope_from);
         message.envelope_recipients = std::mem::take(&mut self.envelope_recipients);
+
+        for warning in &message.parse_warnings {
+            warn!("Message format problem: {warning}");
+        }
 
         // clear the message buffer
         self.buffer.clear();
