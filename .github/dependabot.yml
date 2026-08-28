@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directories:
+      - "/backend"
+      - "/frontend"
+      - "/mailcrab"
+    # bi-weekly: 1st and 15th of each month at 08:00 UTC
+    schedule:
+      interval: "cron"
+      cronjob: "0 8 1,15 * *"
+    # only propose versions that have been released for at least 7 days
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 8 1,15 * *"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "cron"
+      cronjob: "0 8 1,15 * *"
+    cooldown:
+      default-days: 7
